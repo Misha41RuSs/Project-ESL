@@ -1,129 +1,188 @@
 #include <stdbool.h>
 #include <stdint.h>
-
 #include "nrf_gpio.h"
-#include "nrf_delay.h"
 #include "nrfx_pwm.h"
+#include "nrfx_gpiote.h"
+#include "app_timer.h"
+#include "nrfx_clock.h"
 
-#define LED0_PIN  NRF_GPIO_PIN_MAP(0,6)
-#define LED1_PIN  NRF_GPIO_PIN_MAP(0,8)
-#define LED2_PIN  NRF_GPIO_PIN_MAP(1,9)
-#define LED3_PIN  NRF_GPIO_PIN_MAP(0,12)
+#define LED0_PIN 6
+#define LED1_PIN 8
+#define LED2_PIN 41
+#define LED3_PIN 12
+#define BUTTON_PIN 38
 
-#define BUTTON_PIN NRF_GPIO_PIN_MAP(1,6)
+#define PWM_CHANNELS       4
+#define PWM_TOP_VALUE      1000
+#define FADE_INTERVAL_MS   5
+#define FADE_STEP          10
 
-#define PWM_TOP_VALUE 255
-#define FADE_STEPS    50
+#define DEBOUNCE_MS        200
+#define DOUBLE_CLICK_MS    600
 
-nrfx_pwm_t m_pwm0 = NRFX_PWM_INSTANCE(0);
-
-nrf_pwm_values_individual_t seq_values = {
-    .channel_0 = 0,
-    .channel_1 = 0,
-    .channel_2 = 0,
-    .channel_3 = 0
-};
-
-nrf_pwm_sequence_t pwm_seq = {
-    .values.p_individual = &seq_values,
-    .length = NRF_PWM_VALUES_LENGTH(seq_values),
-    .repeats = 0,
-    .end_delay = 0
-};
-
+// Прототипы функций
 void pwm_init(void);
 void button_init(void);
-bool button_pressed(void);
-void set_pwm_duty(int, uint16_t);
-void fade_in(int, int);
-void fade_out(int, int);
-void blink(int);
+void pwm_update(void *p_context);
+void pwm_toggle(void);
+void debounce_timer_handler(void *p_context);
+void double_click_timer_handler(void *p_context);
+void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action);
 
-int digits[] = { 6, 5, 7, 7 };
-const int digits_count = 4;
+// Глобальные переменные
+static nrfx_pwm_t m_pwm_instance = NRFX_PWM_INSTANCE(0);
+static nrf_pwm_values_individual_t m_seq_values;
+static int m_led_counts[PWM_CHANNELS] = {6, 5, 7, 7};
+static volatile bool m_running = true;
+static bool m_fading_in = true;
+static uint16_t m_current_duty = 0;
+static int m_current_led_index = 0;
+static int m_current_blink_count = 0;
+
+static bool m_button_blocked = false;
+static bool m_first_click_detected = false;
+
+APP_TIMER_DEF(pwm_timer);
+APP_TIMER_DEF(debounce_timer);
+APP_TIMER_DEF(double_click_timer);
 
 int main(void) {
+
+    nrfx_clock_init(NULL);
+    nrfx_clock_lfclk_start();
+    while(!nrfx_clock_lfclk_is_running());
+
+    app_timer_init();
     pwm_init();
     button_init();
 
-    int led_index = 0;
-    int blink_done = 0;
-
-    while (1) {
-        while (!button_pressed()) {}
-
-        while (button_pressed()) {
-            blink(led_index);
-            blink_done++;
-
-            if (blink_done >= digits[led_index])
-            {
-                led_index = (led_index + 1) % digits_count;
-                blink_done = 0;
-            }
-        }
-    }
+    while(1)
+        __WFE();
 }
 
 void pwm_init(void) {
-    nrfx_pwm_config_t config;
-
+    nrfx_pwm_config_t config = NRFX_PWM_DEFAULT_CONFIG;
     config.output_pins[0] = LED0_PIN;
     config.output_pins[1] = LED1_PIN;
     config.output_pins[2] = LED2_PIN;
     config.output_pins[3] = LED3_PIN;
-
-    config.irq_priority = 7;
-
-    config.base_clock = NRF_PWM_CLK_1MHz; 
+    config.base_clock = NRF_PWM_CLK_1MHz;
     config.count_mode = NRF_PWM_MODE_UP;
-    config.top_value = PWM_TOP_VALUE;
-    config.load_mode = NRF_PWM_LOAD_INDIVIDUAL;
-    config.step_mode = NRF_PWM_STEP_AUTO;
+    config.top_value  = PWM_TOP_VALUE;
+    config.load_mode  = NRF_PWM_LOAD_INDIVIDUAL;
+    config.step_mode  = NRF_PWM_STEP_AUTO;
 
-    nrfx_pwm_init(&m_pwm0, &config, NULL);
+    nrfx_pwm_init(&m_pwm_instance, &config, NULL);
+
+    m_seq_values.channel_0 = 0;
+    m_seq_values.channel_1 = 0;
+    m_seq_values.channel_2 = 0;
+    m_seq_values.channel_3 = 0;
+
+    app_timer_create(&pwm_timer, APP_TIMER_MODE_REPEATED, pwm_update);
+    app_timer_start(pwm_timer, APP_TIMER_TICKS(FADE_INTERVAL_MS), NULL);
+}
+
+void pwm_update(void *p_context) {
+    (void)p_context;
+    if (!m_running) return;
+
+    if (m_fading_in) {
+        m_current_duty += FADE_STEP;
+        if (m_current_duty >= PWM_TOP_VALUE)
+        {
+            m_current_duty = PWM_TOP_VALUE;
+            m_fading_in = false;
+        }
+    }
+    else {
+        if (m_current_duty <= FADE_STEP) {
+            m_current_duty = 0;
+            m_fading_in = true;
+            m_current_blink_count++;
+            if (m_current_blink_count >= m_led_counts[m_current_led_index]) {
+                m_current_blink_count = 0;
+                do {
+                    m_current_led_index = (m_current_led_index + 1) % PWM_CHANNELS;
+                } while (m_led_counts[m_current_led_index] == 0);
+            }
+        }
+        else {
+            m_current_duty -= FADE_STEP;
+        }
+    }
+
+    m_seq_values.channel_0 = 0;
+    m_seq_values.channel_1 = 0;
+    m_seq_values.channel_2 = 0;
+    m_seq_values.channel_3 = 0;
+
+    switch (m_current_led_index) {
+        case 0: m_seq_values.channel_0 = m_current_duty; break;
+        case 1: m_seq_values.channel_1 = m_current_duty; break;
+        case 2: m_seq_values.channel_2 = m_current_duty; break;
+        case 3: m_seq_values.channel_3 = m_current_duty; break;
+    }
+
+    nrf_pwm_sequence_t seq = {
+        .values.p_individual = &m_seq_values,
+        .length = PWM_CHANNELS,
+        .repeats = 0,
+        .end_delay = 0
+    };
+
+    nrfx_pwm_simple_playback(&m_pwm_instance, &seq, 1, 0);
+}
+
+void pwm_toggle(void) {
+    m_running = !m_running;
+    if (m_running) {
+        app_timer_start(pwm_timer, APP_TIMER_TICKS(FADE_INTERVAL_MS), NULL);
+    }
+    else {
+        app_timer_stop(pwm_timer);
+        nrf_pwm_sequence_t seq = {
+            .values.p_individual = &m_seq_values,
+            .length = PWM_CHANNELS,
+            .repeats = 0,
+            .end_delay = 0
+        };
+        nrfx_pwm_simple_playback(&m_pwm_instance, &seq, 1, 0);
+    }
+}
+
+void debounce_timer_handler(void *p_context) { m_button_blocked = false; }
+void double_click_timer_handler(void *p_context) { m_first_click_detected = false; }
+
+void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
+    if (m_button_blocked) return;
+
+    m_button_blocked = true;
+    app_timer_start(debounce_timer, APP_TIMER_TICKS(DEBOUNCE_MS), NULL);
+
+    if (!m_first_click_detected) {
+        m_first_click_detected = true;
+        app_timer_start(double_click_timer, APP_TIMER_TICKS(DOUBLE_CLICK_MS), NULL);
+    }
+    else {
+        m_first_click_detected = false;
+        app_timer_stop(double_click_timer);
+        pwm_toggle();
+    }
 }
 
 void button_init(void) {
+    if (!nrfx_gpiote_is_init())
+        nrfx_gpiote_init();
+
     nrf_gpio_cfg_input(BUTTON_PIN, NRF_GPIO_PIN_PULLUP);
-}
 
-bool button_pressed(void) {
-    return nrf_gpio_pin_read(BUTTON_PIN) == 0;
-}
+    nrfx_gpiote_in_config_t in_cfg = NRFX_GPIOTE_CONFIG_IN_SENSE_HITOLO(true);
+    in_cfg.pull = NRF_GPIO_PIN_PULLUP;
 
-void set_pwm_duty(int led_index, uint16_t duty) {
-    switch (led_index) {
-        case 0: seq_values.channel_0 = duty; break;
-        case 1: seq_values.channel_1 = duty; break;
-        case 2: seq_values.channel_2 = duty; break;
-        case 3: seq_values.channel_3 = duty; break;
-    }
+    nrfx_gpiote_in_init(BUTTON_PIN, &in_cfg, button_handler);
+    nrfx_gpiote_in_event_enable(BUTTON_PIN, true);
 
-    nrfx_pwm_simple_playback(&m_pwm0, &pwm_seq, 1, NRFX_PWM_FLAG_LOOP);
-}
-
-void fade_in(int led_index, int time_ms) {
-    int delay = time_ms / FADE_STEPS;
-
-    for (int i = 0; i <= FADE_STEPS; i++) {
-        uint16_t duty = (PWM_TOP_VALUE * i) / FADE_STEPS;
-        set_pwm_duty(led_index, duty);
-        nrf_delay_ms(delay);
-    }
-}
-
-void fade_out(int led_index, int time_ms) {
-    int delay = time_ms / FADE_STEPS;
-
-    for (int i = FADE_STEPS; i >= 0; i--) {
-        uint16_t duty = (PWM_TOP_VALUE * i) / FADE_STEPS;
-        set_pwm_duty(led_index, duty);
-        nrf_delay_ms(delay);
-    }
-}
-
-void blink(int led_index) {
-    fade_in(led_index, 400);
-    fade_out(led_index, 400);
+    app_timer_create(&debounce_timer, APP_TIMER_MODE_SINGLE_SHOT, debounce_timer_handler);
+    app_timer_create(&double_click_timer, APP_TIMER_MODE_SINGLE_SHOT, double_click_timer_handler);
 }
