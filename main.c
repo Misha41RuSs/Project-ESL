@@ -124,6 +124,6 @@ void fade_out(int led_index, int time_ms) {
 }
 
 void blink(int led_index) {
-    fade_in(led_index, 200);
-    fade_out(led_index, 200);
+    fade_in(led_index, 400);
+    fade_out(led_index, 400);
 }
