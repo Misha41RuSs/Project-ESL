@@ -2,7 +2,7 @@ _build/nrf52840_xxaa/nrfx_pwm.c.o: \
  /home/user/devel/esl-nsdk/modules/nrfx/drivers/src/nrfx_pwm.c \
  /home/user/devel/esl-nsdk/modules/nrfx/nrfx.h \
  /home/user/devel/esl-nsdk/integration/nrfx/nrfx_config.h \
- ../config/sdk_config.h \
+ ..//config/sdk_config.h \
  /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h \
  /usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h \
  /usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h \
@@ -75,7 +75,7 @@ _build/nrf52840_xxaa/nrfx_pwm.c.o: \
 
 /home/user/devel/esl-nsdk/integration/nrfx/nrfx_config.h:
 
-../config/sdk_config.h:
+..//config/sdk_config.h:
 
 /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h:
 

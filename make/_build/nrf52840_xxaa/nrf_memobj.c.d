@@ -15,7 +15,7 @@ _build/nrf52840_xxaa/nrf_memobj.c.o: \
  /home/user/devel/esl-nsdk/components/libraries/util/sdk_errors.h \
  /home/user/devel/esl-nsdk/components/drivers_nrf/nrf_soc_nosd/nrf_error.h \
  /home/user/devel/esl-nsdk/components/libraries/balloc/nrf_balloc.h \
- ../config/sdk_config.h \
+ ..//config/sdk_config.h \
  /home/user/devel/esl-nsdk/components/libraries/util/app_util_platform.h \
  /home/user/devel/esl-nsdk/modules/nrfx/mdk/compiler_abstraction.h \
  /home/user/devel/esl-nsdk/modules/nrfx/mdk/nrf.h \
@@ -98,7 +98,7 @@ _build/nrf52840_xxaa/nrf_memobj.c.o: \
 
 /home/user/devel/esl-nsdk/components/libraries/balloc/nrf_balloc.h:
 
-../config/sdk_config.h:
+..//config/sdk_config.h:
 
 /home/user/devel/esl-nsdk/components/libraries/util/app_util_platform.h:
 

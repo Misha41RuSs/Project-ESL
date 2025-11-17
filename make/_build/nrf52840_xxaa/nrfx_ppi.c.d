@@ -1,12 +1,12 @@
-_build/nrf52840_xxaa/main.c.o: ..//main.c \
- /usr/lib/gcc/arm-none-eabi/9.2.1/include/stdbool.h \
- /usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h \
- /home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_gpio.h \
+_build/nrf52840_xxaa/nrfx_ppi.c.o: \
+ /home/user/devel/esl-nsdk/modules/nrfx/drivers/src/nrfx_ppi.c \
  /home/user/devel/esl-nsdk/modules/nrfx/nrfx.h \
  /home/user/devel/esl-nsdk/integration/nrfx/nrfx_config.h \
  ..//config/sdk_config.h \
  /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h \
+ /usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h \
  /usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h \
+ /usr/lib/gcc/arm-none-eabi/9.2.1/include/stdbool.h \
  /home/user/devel/esl-nsdk/modules/nrfx/mdk/nrf.h \
  /home/user/devel/esl-nsdk/modules/nrfx/mdk/nrf52840.h \
  /home/user/devel/esl-nsdk/components/toolchain/cmsis/include/core_cm4.h \
@@ -54,27 +54,7 @@ _build/nrf52840_xxaa/main.c.o: ..//main.c \
  /home/user/devel/esl-nsdk/modules/nrfx/soc/nrfx_atomic.h \
  /home/user/devel/esl-nsdk/components/libraries/util/sdk_errors.h \
  /home/user/devel/esl-nsdk/components/libraries/util/sdk_resources.h \
- /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_errors.h \
- /home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_pwm.h \
- /home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_pwm.h \
- /home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_gpiote.h \
- /home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_gpiote.h \
- /home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_gpio.h \
- /home/user/devel/esl-nsdk/components/libraries/timer/app_timer.h \
- /home/user/devel/esl-nsdk/components/libraries/util/app_error.h \
- /home/user/devel/esl-nsdk/components/libraries/log/nrf_log_instance.h \
- /home/user/devel/esl-nsdk/components/libraries/experimental_section_vars/nrf_section.h \
- /home/user/devel/esl-nsdk/components/libraries/log/nrf_log_types.h \
- /home/user/devel/esl-nsdk/components/libraries/sortlist/nrf_sortlist.h \
- /home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_clock.h \
- /home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_clock.h \
- /home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_power_clock.h
-
-/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdbool.h:
-
-/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_gpio.h:
+ /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_errors.h
 
 /home/user/devel/esl-nsdk/modules/nrfx/nrfx.h:
 
@@ -84,7 +64,11 @@ _build/nrf52840_xxaa/main.c.o: ..//main.c \
 
 /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h:
 
+/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h:
+
 /usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h:
+
+/usr/lib/gcc/arm-none-eabi/9.2.1/include/stdbool.h:
 
 /home/user/devel/esl-nsdk/modules/nrfx/mdk/nrf.h:
 
@@ -197,31 +181,3 @@ _build/nrf52840_xxaa/main.c.o: ..//main.c \
 /home/user/devel/esl-nsdk/components/libraries/util/sdk_resources.h:
 
 /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_errors.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_pwm.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_pwm.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_gpiote.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_gpiote.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_gpio.h:
-
-/home/user/devel/esl-nsdk/components/libraries/timer/app_timer.h:
-
-/home/user/devel/esl-nsdk/components/libraries/util/app_error.h:
-
-/home/user/devel/esl-nsdk/components/libraries/log/nrf_log_instance.h:
-
-/home/user/devel/esl-nsdk/components/libraries/experimental_section_vars/nrf_section.h:
-
-/home/user/devel/esl-nsdk/components/libraries/log/nrf_log_types.h:
-
-/home/user/devel/esl-nsdk/components/libraries/sortlist/nrf_sortlist.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_clock.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_clock.h:
-
-/home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_power_clock.h:

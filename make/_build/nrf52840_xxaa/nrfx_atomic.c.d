@@ -3,7 +3,7 @@ _build/nrf52840_xxaa/nrfx_atomic.c.o: \
  /home/user/devel/esl-nsdk/modules/nrfx/soc/nrfx_atomic.h \
  /home/user/devel/esl-nsdk/modules/nrfx/nrfx.h \
  /home/user/devel/esl-nsdk/integration/nrfx/nrfx_config.h \
- ../config/sdk_config.h \
+ ..//config/sdk_config.h \
  /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h \
  /usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h \
  /usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h \
@@ -64,7 +64,7 @@ _build/nrf52840_xxaa/nrfx_atomic.c.o: \
 
 /home/user/devel/esl-nsdk/integration/nrfx/nrfx_config.h:
 
-../config/sdk_config.h:
+..//config/sdk_config.h:
 
 /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h:
 

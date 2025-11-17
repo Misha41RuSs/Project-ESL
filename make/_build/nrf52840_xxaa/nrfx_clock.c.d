@@ -1,8 +1,8 @@
-_build/nrf52840_xxaa/nrfx_timer.c.o: \
- /home/user/devel/esl-nsdk/modules/nrfx/drivers/src/nrfx_timer.c \
+_build/nrf52840_xxaa/nrfx_clock.c.o: \
+ /home/user/devel/esl-nsdk/modules/nrfx/drivers/src/nrfx_clock.c \
  /home/user/devel/esl-nsdk/modules/nrfx/nrfx.h \
  /home/user/devel/esl-nsdk/integration/nrfx/nrfx_config.h \
- ../config/sdk_config.h \
+ ..//config/sdk_config.h \
  /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h \
  /usr/lib/gcc/arm-none-eabi/9.2.1/include/stdint.h \
  /usr/lib/gcc/arm-none-eabi/9.2.1/include/stddef.h \
@@ -54,13 +54,28 @@ _build/nrf52840_xxaa/nrfx_timer.c.o: \
  /home/user/devel/esl-nsdk/modules/nrfx/soc/nrfx_atomic.h \
  /home/user/devel/esl-nsdk/components/libraries/util/sdk_errors.h \
  /home/user/devel/esl-nsdk/components/libraries/util/sdk_resources.h \
- /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_errors.h
+ /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_errors.h \
+ /home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_clock.h \
+ /home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_clock.h \
+ /home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_power_clock.h \
+ /home/user/devel/esl-nsdk/integration/nrfx/nrfx_log.h \
+ /home/user/devel/esl-nsdk/components/libraries/log/nrf_log.h \
+ /home/user/devel/esl-nsdk/components/libraries/util/sdk_common.h \
+ /usr/include/newlib/string.h /usr/include/newlib/sys/string.h \
+ /home/user/devel/esl-nsdk/components/libraries/util/sdk_os.h \
+ /home/user/devel/esl-nsdk/components/libraries/util/app_util.h \
+ /home/user/devel/esl-nsdk/components/libraries/util/sdk_macros.h \
+ /home/user/devel/esl-nsdk/components/libraries/experimental_section_vars/nrf_section.h \
+ /home/user/devel/esl-nsdk/components/libraries/log/src/nrf_log_internal.h \
+ /home/user/devel/esl-nsdk/components/libraries/log/nrf_log_instance.h \
+ /home/user/devel/esl-nsdk/components/libraries/log/nrf_log_types.h \
+ /home/user/devel/esl-nsdk/components/libraries/log/nrf_log_types.h
 
 /home/user/devel/esl-nsdk/modules/nrfx/nrfx.h:
 
 /home/user/devel/esl-nsdk/integration/nrfx/nrfx_config.h:
 
-../config/sdk_config.h:
+..//config/sdk_config.h:
 
 /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_common.h:
 
@@ -181,3 +196,35 @@ _build/nrf52840_xxaa/nrfx_timer.c.o: \
 /home/user/devel/esl-nsdk/components/libraries/util/sdk_resources.h:
 
 /home/user/devel/esl-nsdk/modules/nrfx/drivers/nrfx_errors.h:
+
+/home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_clock.h:
+
+/home/user/devel/esl-nsdk/modules/nrfx/hal/nrf_clock.h:
+
+/home/user/devel/esl-nsdk/modules/nrfx/drivers/include/nrfx_power_clock.h:
+
+/home/user/devel/esl-nsdk/integration/nrfx/nrfx_log.h:
+
+/home/user/devel/esl-nsdk/components/libraries/log/nrf_log.h:
+
+/home/user/devel/esl-nsdk/components/libraries/util/sdk_common.h:
+
+/usr/include/newlib/string.h:
+
+/usr/include/newlib/sys/string.h:
+
+/home/user/devel/esl-nsdk/components/libraries/util/sdk_os.h:
+
+/home/user/devel/esl-nsdk/components/libraries/util/app_util.h:
+
+/home/user/devel/esl-nsdk/components/libraries/util/sdk_macros.h:
+
+/home/user/devel/esl-nsdk/components/libraries/experimental_section_vars/nrf_section.h:
+
+/home/user/devel/esl-nsdk/components/libraries/log/src/nrf_log_internal.h:
+
+/home/user/devel/esl-nsdk/components/libraries/log/nrf_log_instance.h:
+
+/home/user/devel/esl-nsdk/components/libraries/log/nrf_log_types.h:
+
+/home/user/devel/esl-nsdk/components/libraries/log/nrf_log_types.h:

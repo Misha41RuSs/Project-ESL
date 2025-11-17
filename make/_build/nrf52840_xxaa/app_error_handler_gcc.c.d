@@ -12,7 +12,7 @@ _build/nrf52840_xxaa/app_error_handler_gcc.c.o: \
  /usr/include/newlib/sys/_types.h /usr/include/newlib/machine/_types.h \
  /usr/include/newlib/machine/_default_types.h \
  /usr/include/newlib/sys/lock.h /usr/include/newlib/sys/cdefs.h \
- /usr/include/newlib/sys/string.h ../config/sdk_config.h \
+ /usr/include/newlib/sys/string.h ..//config/sdk_config.h \
  /home/user/devel/esl-nsdk/components/libraries/util/nordic_common.h \
  /home/user/devel/esl-nsdk/modules/nrfx/mdk/compiler_abstraction.h \
  /home/user/devel/esl-nsdk/components/libraries/util/sdk_os.h \
@@ -81,7 +81,7 @@ _build/nrf52840_xxaa/app_error_handler_gcc.c.o: \
 
 /usr/include/newlib/sys/string.h:
 
-../config/sdk_config.h:
+..//config/sdk_config.h:
 
 /home/user/devel/esl-nsdk/components/libraries/util/nordic_common.h:
 
