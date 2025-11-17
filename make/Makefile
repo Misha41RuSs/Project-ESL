@@ -31,6 +31,7 @@ SRC_FILES += \
   $(SDK_ROOT)/components/libraries/strerror/nrf_strerror.c \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
   $(PROJ_DIR)/main.c \
+  $(SDK_ROOT)/modules/nrfx/drivers/src/nrfx_pwm.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
 
 # Include folders common to all targets
@@ -58,6 +59,14 @@ INC_FOLDERS += \
   $(SDK_ROOT)/components/libraries/memobj \
   $(SDK_ROOT)/external/fprintf \
   $(SDK_ROOT)/components/libraries/log/src \
+
+# nrfx drivers (PWM/GPIOTE/CLOCK)
+INC_FOLDERS += \
+  $(SDK_ROOT)/modules/nrfx/drivers/include \
+  $(SDK_ROOT)/modules/nrfx \
+  $(SDK_ROOT)/modules/nrfx/hal \
+  $(SDK_ROOT)/integration/nrfx \
+  $(SDK_ROOT)/integration/nrfx/legacy
 
 # Libraries common to all targets
 LIB_FILES += \
