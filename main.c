@@ -18,10 +18,10 @@
 
 #define MAIN_INTERVAL_MS   20  
 #define DEBOUNCE_MS        200
-#define DOUBLE_CLICK_MS    600
+#define DOUBLE_CLICK_MS    500
 
 #define HOLD_INTERVAL_MS   MAIN_INTERVAL_MS
-#define HOLD_STEP_H        2    // градусы за шаг для H
+#define HOLD_STEP_H        1    // градусы за шаг для H
 #define HOLD_STEP_SV       1    // проценты за шаг для S и V
 
 #define SLOW_BLINK_PERIOD_MS   1500  
