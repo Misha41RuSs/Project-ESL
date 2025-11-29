@@ -6,26 +6,32 @@
 #include "nrfx_gpiote.h"
 #include "app_timer.h"
 #include "nrfx_clock.h"
+#include "nrfx_nvmc.h"
+#include "nrf_pwm.h"
+#include "sdk_errors.h"
+#include "app_error.h"
+// New includes for logging
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
 
-#define LED0_PIN 6    
-#define LED1_PIN 8    
-#define LED2_PIN 41   
-#define LED3_PIN 12   
+#define LED0_PIN 6
+#define LED1_PIN 8
+#define LED2_PIN 41
+#define LED3_PIN 12
 #define BUTTON_PIN 38
-
-#define PWM_CHANNELS       4
-#define PWM_TOP_VALUE      1000U
-
-#define MAIN_INTERVAL_MS   20  
-#define DEBOUNCE_MS        200
-#define DOUBLE_CLICK_MS    500
-
-#define HOLD_INTERVAL_MS   MAIN_INTERVAL_MS
-#define HOLD_STEP_H        1    // градусы за шаг для H
-#define HOLD_STEP_SV       1    // проценты за шаг для S и V
-
-#define SLOW_BLINK_PERIOD_MS   1500  
-#define FAST_BLINK_PERIOD_MS    500
+#define PWM_CHANNELS 4
+#define PWM_TOP_VALUE 1000U
+#define MAIN_INTERVAL_MS 20
+#define DEBOUNCE_MS 200
+#define DOUBLE_CLICK_MS 500
+#define HOLD_INTERVAL_MS MAIN_INTERVAL_MS
+#define HOLD_STEP_H 1 // градусы за шаг для H
+#define HOLD_STEP_SV 1 // проценты за шаг для S и V
+#define SLOW_BLINK_PERIOD_MS 1500
+#define FAST_BLINK_PERIOD_MS 500
+// New: Flash save address (page-aligned in app data region)
+#define FLASH_SAVE_ADDR 0x7F000
 
 // Прототипы функций
 void pwm_init(void);
@@ -38,38 +44,33 @@ static void update_indicator_params_for_mode(void);
 static inline int clamp_int(int v, int lo, int hi);
 static void hsv_to_rgb(float h, int s, int v, uint16_t *r, uint16_t *g, uint16_t *b);
 static void pwm_write_channels(uint16_t ch0, uint16_t ch1, uint16_t ch2, uint16_t ch3);
+// New prototypes for flash
+static void save_hsv_to_flash(void);
+static bool load_hsv_from_flash(void);
 
 static nrfx_pwm_t m_pwm_instance = NRFX_PWM_INSTANCE(0);
 static nrf_pwm_values_individual_t m_seq_values;
-
 typedef enum {
     MODE_NONE = 0,
     MODE_HUE,
     MODE_SAT,
     MODE_VAL
 } input_mode_t;
-
 static volatile input_mode_t m_mode = MODE_NONE;
-
-static float m_h = 0.0f;    
-static int   m_s = 100;     
-static int   m_v = 100;     
-
+static float m_h = 0.0f;
+static int m_s = 100;
+static int m_v = 100;
 static int dir_h = 1;
 static int dir_s = 1;
 static int dir_v = 1;
-
 static int m_indicator_duty = 0;
-static int m_indicator_dir = 1; 
-
+static int m_indicator_dir = 1;
 static volatile bool m_button_blocked = false;
 static volatile bool m_first_click_detected = false;
 static volatile bool m_button_held = false;
-
 APP_TIMER_DEF(main_timer);
 APP_TIMER_DEF(debounce_timer);
 APP_TIMER_DEF(double_click_timer);
-
 static uint32_t m_indicator_step = 1;
 static uint32_t m_indicator_period_ms = SLOW_BLINK_PERIOD_MS;
 
@@ -77,25 +78,68 @@ int main(void) {
     nrfx_clock_init(NULL);
     nrfx_clock_lfclk_start();
     while(!nrfx_clock_lfclk_is_running());
-
     app_timer_init();
+    
+    ret_code_t err_code = NRF_LOG_INIT(NULL);
+    APP_ERROR_CHECK(err_code);
+    NRF_LOG_DEFAULT_BACKENDS_INIT();
 
-    m_s = 100;
-    m_v = 100;
-    m_h = (77.0f / 100.0f) * 360.0f;
-
+    if (!load_hsv_from_flash()) {
+        m_s = 100;
+        m_v = 100;
+        m_h = (77.0f / 100.0f) * 360.0f;
+    }
     update_indicator_params_for_mode();
-
     pwm_init();
     button_init();
-
     uint16_t r, g, b;
     hsv_to_rgb(m_h, m_s, m_v, &r, &g, &b);
     pwm_write_channels(0, r, g, b);
-
+    
     while (1) {
-        __WFE();
+        if (NRF_LOG_PROCESS() == false) {
+            __WFE();
+        }
     }
+}
+
+// New: Pack HSV to uint32_t (cast h to int for storage)
+static uint32_t pack_hsv(void) {
+    return ((uint32_t)((int)m_h) << 16) | ((uint32_t)m_s << 8) | m_v;
+}
+
+// New: Unpack uint32_t to HSV
+static void unpack_hsv(uint32_t packed) {
+    m_h = (float)((packed >> 16) & 0xFFFF);
+    m_s = (packed >> 8) & 0xFF;
+    m_v = packed & 0xFF;
+}
+
+// New: Save HSV to flash
+static void save_hsv_to_flash(void) {
+    uint32_t data = pack_hsv();
+    uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
+    if (*p_flash == data) return;  // No change
+    
+    NRF_LOG_INFO("Saving HSV to flash: H=%.1f, S=%d, V=%d", m_h, m_s, m_v);
+    nrfx_nvmc_page_erase(FLASH_SAVE_ADDR);
+    nrfx_nvmc_word_write(FLASH_SAVE_ADDR, data);
+    while (!nrfx_nvmc_write_done_check());
+}
+
+// New: Load HSV from flash
+static bool load_hsv_from_flash(void) {
+    uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
+    uint32_t data = *p_flash;
+    if (data == 0xFFFFFFFF) return false;  // Erased, first boot
+    
+    unpack_hsv(data);
+    // Clamp values
+    m_h = clamp_int((int)m_h, 0, 360);
+    m_s = clamp_int(m_s, 0, 100);
+    m_v = clamp_int(m_v, 0, 100);
+    NRF_LOG_INFO("Loaded HSV from flash: H=%.1f, S=%d, V=%d", m_h, m_s, m_v);
+    return true;
 }
 
 static inline int clamp_int(int v, int lo, int hi) {
@@ -171,7 +215,7 @@ static void update_indicator_params_for_mode(void) {
             break;
     }
     if (m_indicator_period_ms > 0)
-        m_indicator_step = (int)ceilf((float)PWM_TOP_VALUE * ( (float)MAIN_INTERVAL_MS / (m_indicator_period_ms / 2.0f) )); // половина периода — нарастание
+        m_indicator_step = (int)ceilf((float)PWM_TOP_VALUE * ( (float)MAIN_INTERVAL_MS / (m_indicator_period_ms / 2.0f) )); // половина периода — на возрастание
     else
         m_indicator_step = PWM_TOP_VALUE;
     if (m_indicator_step < 1) m_indicator_step = 1;
@@ -228,12 +272,9 @@ void double_click_timer_handler(void *p_context) {
 
 void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     (void)pin; (void)action;
-
     if (m_button_blocked) return;
-
     m_button_blocked = true;
     app_timer_start(debounce_timer, APP_TIMER_TICKS(DEBOUNCE_MS), NULL);
-
     if (!m_first_click_detected) {
         m_first_click_detected = true;
         app_timer_start(double_click_timer, APP_TIMER_TICKS(DOUBLE_CLICK_MS), NULL);
@@ -241,29 +282,28 @@ void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     else {
         m_first_click_detected = false;
         app_timer_stop(double_click_timer);
-
+        input_mode_t old_mode = m_mode;  // New: Track old mode for save
         if (m_mode == MODE_NONE) m_mode = MODE_HUE;
         else if (m_mode == MODE_HUE) m_mode = MODE_SAT;
         else if (m_mode == MODE_SAT) m_mode = MODE_VAL;
         else m_mode = MODE_NONE;
-
+        // New: Save if entering NONE from active mode
+        if (m_mode == MODE_NONE && old_mode != MODE_NONE) {
+            save_hsv_to_flash();
+        }
         dir_h = 1; dir_s = 1; dir_v = 1;
-
         update_indicator_params_for_mode();
     }
-
     m_button_held = true;
 }
 
 void main_timer_handler(void *p_context) {
     (void)p_context;
-
     if (m_button_held) {
         if (nrf_gpio_pin_read(BUTTON_PIN) != 0) {
             m_button_held = false;
         }
     }
-
     if (m_button_held && m_mode != MODE_NONE) {
         if (m_mode == MODE_HUE) {
             m_h += dir_h * HOLD_STEP_H;
@@ -295,6 +335,8 @@ void main_timer_handler(void *p_context) {
                 dir_v = 1;
             }
         }
+        // New: Log current HSV after adjustment
+        NRF_LOG_INFO("HSV: H=%.1f, S=%d, V=%d", m_h, m_s, m_v);
     }
 
     uint16_t ind = 0;
