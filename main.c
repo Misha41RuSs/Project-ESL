@@ -5,30 +5,33 @@
 #include "nrfx_pwm.h"
 #include "nrfx_gpiote.h"
 #include "app_timer.h"
-#include "nrfx_clock.h"
+#include "nrf_drv_clock.h"
+#include "nrfx_nvmc.h"
+#include "nrf_pwm.h"
+#include "sdk_errors.h"
+#include "app_error.h"
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
+#include "nrf_log_backend_usb.h"
+#include "nrf_drv_power.h"
 
-#define LED0_PIN 6    // Индикатор (channel 0)
-#define LED1_PIN 8    // R (channel 1)
-#define LED2_PIN 41   // G (channel 2)
-#define LED3_PIN 12   // B (channel 3)
+#define LED0_PIN 6
+#define LED1_PIN 8
+#define LED2_PIN 41
+#define LED3_PIN 12
 #define BUTTON_PIN 38
-
-#define PWM_CHANNELS       4
-#define PWM_TOP_VALUE      1000U
-
-// Основные интервалы
-#define MAIN_INTERVAL_MS   20   // основной таймер — обновление PWM/индикатора/изменения при удержании
-#define DEBOUNCE_MS        200
-#define DOUBLE_CLICK_MS    600
-
-// Поведение при удержании
-#define HOLD_INTERVAL_MS   MAIN_INTERVAL_MS
-#define HOLD_STEP_H        2    // градусы за шаг для H (0..360)
-#define HOLD_STEP_SV       1    // проценты за шаг для S и V (0..100)
-
-// Индикатор мигания (цикл плавного нарастания/спада)
-#define SLOW_BLINK_PERIOD_MS   1500  // полный цикл (возрастание+убывание)
-#define FAST_BLINK_PERIOD_MS    500
+#define PWM_CHANNELS 4
+#define PWM_TOP_VALUE 1000U
+#define MAIN_INTERVAL_MS 20
+#define DEBOUNCE_MS 50
+#define DOUBLE_CLICK_MS 400
+#define HOLD_INTERVAL_MS MAIN_INTERVAL_MS
+#define HOLD_STEP_H 1 // градусы за шаг для H
+#define HOLD_STEP_SV 1 // проценты за шаг для S и V
+#define SLOW_BLINK_PERIOD_MS 1500
+#define FAST_BLINK_PERIOD_MS 500
+#define FLASH_SAVE_ADDR 0x7F000
 
 // Прототипы функций
 void pwm_init(void);
@@ -37,8 +40,13 @@ void main_timer_handler(void * p_context);
 void debounce_timer_handler(void * p_context);
 void double_click_timer_handler(void * p_context);
 void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action);
+static void update_indicator_params_for_mode(void);
+static inline int clamp_int(int v, int lo, int hi);
+static void hsv_to_rgb(float h, int s, int v, uint16_t *r, uint16_t *g, uint16_t *b);
+static void pwm_write_channels(uint16_t ch0, uint16_t ch1, uint16_t ch2, uint16_t ch3);
+static void save_hsv_to_flash(void);
+static bool load_hsv_from_flash(void);
 
-// Глобальные переменные
 static nrfx_pwm_t m_pwm_instance = NRFX_PWM_INSTANCE(0);
 static nrf_pwm_values_individual_t m_seq_values;
 
@@ -50,36 +58,90 @@ typedef enum {
 } input_mode_t;
 
 static volatile input_mode_t m_mode = MODE_NONE;
-
-// HSV state
-static float m_h = 0.0f;    // 0..360
-static int   m_s = 100;     // 0..100
-static int   m_v = 100;     // 0..100
-
-// Направления изменения при удержании (1 = увеличиваем, -1 = уменьшаем)
+static float m_h = 0.0f;
+static int m_s = 100;
+static int m_v = 100;
 static int dir_h = 1;
 static int dir_s = 1;
 static int dir_v = 1;
-
-// Индикатор (канал 0) PWM-уровень и направление для пульсации
 static int m_indicator_duty = 0;
-static int m_indicator_dir = 1; // направление для плавного мигания +1 / -1
-
-// Флаги для кнопки/удержания
+static int m_indicator_dir = 1;
 static volatile bool m_button_blocked = false;
 static volatile bool m_first_click_detected = false;
 static volatile bool m_button_held = false;
-
-// Таймеры
 APP_TIMER_DEF(main_timer);
 APP_TIMER_DEF(debounce_timer);
 APP_TIMER_DEF(double_click_timer);
-
-// Вспомогательные: вычисление шагов индикатора по режиму
 static uint32_t m_indicator_step = 1;
 static uint32_t m_indicator_period_ms = SLOW_BLINK_PERIOD_MS;
 
-// --- Вспомогательные функции ---
+int main(void) {
+    ret_code_t err_code = nrf_drv_clock_init();
+    APP_ERROR_CHECK(err_code);
+    nrf_drv_clock_lfclk_request(NULL);
+    while(!nrf_drv_clock_lfclk_is_running());
+
+    err_code = nrf_drv_power_init(NULL);
+    APP_ERROR_CHECK(err_code);
+
+    app_timer_init();
+    
+    err_code = NRF_LOG_INIT(NULL);
+    APP_ERROR_CHECK(err_code);
+    NRF_LOG_DEFAULT_BACKENDS_INIT();
+
+    if (!load_hsv_from_flash()) {
+        m_s = 100;
+        m_v = 100;
+        m_h = (77.0f / 100.0f) * 360.0f;
+    }
+    update_indicator_params_for_mode();
+    pwm_init();
+    button_init();
+    uint16_t r, g, b;
+    hsv_to_rgb(m_h, m_s, m_v, &r, &g, &b);
+    pwm_write_channels(0, r, g, b);
+    
+    while (1) {
+        LOG_BACKEND_USB_PROCESS();
+        if (NRF_LOG_PROCESS() == false) {
+            __WFE();
+        }
+    }
+}
+
+static uint32_t pack_hsv(void) {
+    return ((uint32_t)((int)m_h) << 16) | ((uint32_t)m_s << 8) | m_v;
+}
+
+static void unpack_hsv(uint32_t packed) {
+    m_h = (float)((packed >> 16) & 0xFFFF);
+    m_s = (packed >> 8) & 0xFF;
+    m_v = packed & 0xFF;
+}
+
+static void save_hsv_to_flash(void) {
+    uint32_t data = pack_hsv();
+    uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
+    if (*p_flash == data) return;
+    
+    NRF_LOG_INFO("Сохраняю настройки HSV: H=%d, S=%d, V=%d", (int)m_h, m_s, m_v);
+    nrfx_nvmc_page_erase(FLASH_SAVE_ADDR);
+    nrfx_nvmc_word_write(FLASH_SAVE_ADDR, data);
+    while (!nrfx_nvmc_write_done_check());
+}
+
+static bool load_hsv_from_flash(void) {
+    uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
+    uint32_t data = *p_flash;
+    if (data == 0xFFFFFFFF) return false; 
+    
+    unpack_hsv(data);
+    m_h = clamp_int((int)m_h, 0, 360);
+    m_s = clamp_int(m_s, 0, 100);
+    m_v = clamp_int(m_v, 0, 100);
+    return true;
+}
 
 static inline int clamp_int(int v, int lo, int hi) {
     if (v < lo) return lo;
@@ -87,7 +149,6 @@ static inline int clamp_int(int v, int lo, int hi) {
     return v;
 }
 
-// HSV (h:0..360, s:0..100, v:0..100) -> RGB (0..PWM_TOP_VALUE)
 static void hsv_to_rgb(float h, int s, int v, uint16_t *r, uint16_t *g, uint16_t *b) {
     float H = h;
     float S = s / 100.0f;
@@ -128,21 +189,14 @@ static void pwm_write_channels(uint16_t ch0, uint16_t ch1, uint16_t ch2, uint16_
     m_seq_values.channel_1 = ch1;
     m_seq_values.channel_2 = ch2;
     m_seq_values.channel_3 = ch3;
-
-    nrf_pwm_sequence_t seq = {
-        .values.p_individual = &m_seq_values,
-        .length = PWM_CHANNELS,
-        .repeats = 0,
-        .end_delay = 0
-    };
-
-    nrfx_pwm_simple_playback(&m_pwm_instance, &seq, 1, 0);
 }
 
 static void update_indicator_params_for_mode(void) {
     switch (m_mode) {
         case MODE_NONE:
             m_indicator_period_ms = 0;
+            m_indicator_duty = 0;
+            m_indicator_dir = 1;
             break;
         case MODE_HUE:
             m_indicator_period_ms = SLOW_BLINK_PERIOD_MS;
@@ -151,36 +205,47 @@ static void update_indicator_params_for_mode(void) {
             m_indicator_period_ms = FAST_BLINK_PERIOD_MS;
             break;
         case MODE_VAL:
-            m_indicator_period_ms = 1; // всегда включён — handled separately
+            m_indicator_period_ms = 1;
+            m_indicator_duty = PWM_TOP_VALUE;
             break;
     }
-    if (m_indicator_period_ms > 0)
-        m_indicator_step = (int)ceilf((float)PWM_TOP_VALUE * ( (float)MAIN_INTERVAL_MS / (m_indicator_period_ms / 2.0f) )); // половина периода — нарастание
-    else
+    if (m_indicator_period_ms > 0) {
+        m_indicator_step = (int)ceilf((float)PWM_TOP_VALUE * ((float)MAIN_INTERVAL_MS / (m_indicator_period_ms / 2.0f)));
+        if (m_indicator_step < 1) m_indicator_step = 1;
+    } else {
         m_indicator_step = PWM_TOP_VALUE;
-    if (m_indicator_step < 1) m_indicator_step = 1;
+    }
+    NRF_LOG_INFO("Режим настройки HSV: %d", m_mode);
 }
-
-// --- Инициализации ---
 
 void pwm_init(void) {
     nrfx_pwm_config_t config = NRFX_PWM_DEFAULT_CONFIG;
-    config.output_pins[0] = LED0_PIN;   // индикатор
-    config.output_pins[1] = LED1_PIN;   // R
-    config.output_pins[2] = LED2_PIN;   // G
-    config.output_pins[3] = LED3_PIN;   // B
+    config.output_pins[0] = LED0_PIN;   
+    config.output_pins[1] = LED1_PIN;   
+    config.output_pins[2] = LED2_PIN;   
+    config.output_pins[3] = LED3_PIN;   
     config.base_clock = NRF_PWM_CLK_1MHz;
     config.count_mode = NRF_PWM_MODE_UP;
     config.top_value  = PWM_TOP_VALUE;
     config.load_mode  = NRF_PWM_LOAD_INDIVIDUAL;
     config.step_mode  = NRF_PWM_STEP_AUTO;
 
-    nrfx_pwm_init(&m_pwm_instance, &config, NULL);
+    ret_code_t err_code = nrfx_pwm_init(&m_pwm_instance, &config, NULL);
+    APP_ERROR_CHECK(err_code);
 
     m_seq_values.channel_0 = 0;
     m_seq_values.channel_1 = 0;
     m_seq_values.channel_2 = 0;
     m_seq_values.channel_3 = 0;
+
+    nrf_pwm_sequence_t seq = {
+        .values.p_individual = &m_seq_values,
+        .length = PWM_CHANNELS,
+        .repeats = 0,
+        .end_delay = 0
+    };
+
+    nrfx_pwm_simple_playback(&m_pwm_instance, &seq, 1, NRFX_PWM_FLAG_LOOP);
 
     app_timer_create(&main_timer, APP_TIMER_MODE_REPEATED, main_timer_handler);
     app_timer_start(main_timer, APP_TIMER_TICKS(MAIN_INTERVAL_MS), NULL);
@@ -192,7 +257,7 @@ void button_init(void) {
 
     nrf_gpio_cfg_input(BUTTON_PIN, NRF_GPIO_PIN_PULLUP);
 
-    nrfx_gpiote_in_config_t in_cfg = NRFX_GPIOTE_CONFIG_IN_SENSE_HITOLO(true);
+    nrfx_gpiote_in_config_t in_cfg = NRFX_GPIOTE_CONFIG_IN_SENSE_TOGGLE(true);
     in_cfg.pull = NRF_GPIO_PIN_PULLUP;
 
     nrfx_gpiote_in_init(BUTTON_PIN, &in_cfg, button_handler);
@@ -202,10 +267,38 @@ void button_init(void) {
     app_timer_create(&double_click_timer, APP_TIMER_MODE_SINGLE_SHOT, double_click_timer_handler);
 }
 
-// --- Обработчики таймеров и кнопки ---
-
 void debounce_timer_handler(void *p_context) {
     (void)p_context;
+
+    bool is_pressed = nrf_gpio_pin_read(BUTTON_PIN) == 0; 
+
+    if (is_pressed) {
+        NRF_LOG_INFO("Кнопка нажата");
+        m_button_held = true;
+
+        if (m_first_click_detected) {
+            NRF_LOG_INFO("Двойное нажатие");
+            m_first_click_detected = false;
+            app_timer_stop(double_click_timer);
+            input_mode_t old_mode = m_mode;
+            if (m_mode == MODE_NONE) m_mode = MODE_HUE;
+            else if (m_mode == MODE_HUE) m_mode = MODE_SAT;
+            else if (m_mode == MODE_SAT) m_mode = MODE_VAL;
+            else m_mode = MODE_NONE;
+            if (m_mode == MODE_NONE && old_mode != MODE_NONE) {
+                save_hsv_to_flash();
+            }
+            dir_h = 1; dir_s = 1; dir_v = 1;
+            update_indicator_params_for_mode();
+        } else {
+            m_first_click_detected = true;
+            app_timer_start(double_click_timer, APP_TIMER_TICKS(DOUBLE_CLICK_MS), NULL);
+        }
+    } else {
+        NRF_LOG_INFO("Кнопка отжата");
+        m_button_held = false;
+    }
+
     m_button_blocked = false;
 }
 
@@ -216,47 +309,13 @@ void double_click_timer_handler(void *p_context) {
 
 void button_handler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action) {
     (void)pin; (void)action;
-
     if (m_button_blocked) return;
-
     m_button_blocked = true;
     app_timer_start(debounce_timer, APP_TIMER_TICKS(DEBOUNCE_MS), NULL);
-
-    if (!m_first_click_detected) {
-        m_first_click_detected = true;
-        app_timer_start(double_click_timer, APP_TIMER_TICKS(DOUBLE_CLICK_MS), NULL);
-    }
-    else {
-        m_first_click_detected = false;
-        app_timer_stop(double_click_timer);
-        // cycle mode
-        if (m_mode == MODE_NONE) m_mode = MODE_HUE;
-        else if (m_mode == MODE_HUE) m_mode = MODE_SAT;
-        else if (m_mode == MODE_SAT) m_mode = MODE_VAL;
-        else m_mode = MODE_NONE;
-
-        // при входе в режим рекомендуется установить направление в положительное (чтобы всегда начинать увеличивать)
-        dir_h = 1; dir_s = 1; dir_v = 1;
-
-        update_indicator_params_for_mode();
-    }
-
-    // Начинаем удержание (handler вызывается на нажатие)
-    m_button_held = true;
 }
 
 void main_timer_handler(void *p_context) {
     (void)p_context;
-
-    // Если ранее была пометка удержания, но кнопка реально отпущена — сбросим флаг удержания
-    if (m_button_held) {
-        // подтянутый пин: при отпускании читаем 1; при нажатии — 0 (у тебя pullup)
-        if (nrf_gpio_pin_read(BUTTON_PIN) != 0) {
-            m_button_held = false;
-        }
-    }
-
-    // Если удержание активно и режим редактирования != NONE, изменяем параметр в осциллирующем режиме
     if (m_button_held && m_mode != MODE_NONE) {
         if (m_mode == MODE_HUE) {
             m_h += dir_h * HOLD_STEP_H;
@@ -288,19 +347,17 @@ void main_timer_handler(void *p_context) {
                 dir_v = 1;
             }
         }
+        NRF_LOG_INFO("HSV: H=%d, S=%d, V=%d", (int)m_h, m_s, m_v);
     }
 
-    // --- индикатор (канал 0) ---
     uint16_t ind = 0;
     if (m_mode == MODE_NONE) {
         ind = 0;
         m_indicator_duty = 0;
     } else if (m_mode == MODE_VAL) {
-        // всегда включён
         ind = PWM_TOP_VALUE;
         m_indicator_duty = PWM_TOP_VALUE;
     } else {
-        // пульс: меняем duty на m_indicator_step * m_indicator_dir
         if (m_indicator_period_ms > 0) {
             m_indicator_duty += (int)m_indicator_step * m_indicator_dir;
             if (m_indicator_duty >= (int)PWM_TOP_VALUE) {
@@ -316,38 +373,8 @@ void main_timer_handler(void *p_context) {
         }
     }
 
-    // --- обновляем цвет (каналы 1..3) ---
     uint16_t r, g, b;
     hsv_to_rgb(m_h, m_s, m_v, &r, &g, &b);
 
     pwm_write_channels(ind, r, g, b);
-}
-
-// --- main ---
-
-int main(void) {
-    nrfx_clock_init(NULL);
-    nrfx_clock_lfclk_start();
-    while(!nrfx_clock_lfclk_is_running());
-
-    app_timer_init();
-
-    // DEVICE_ID = 6577 -> последние 2 цифры = 77 -> hue% = 77% -> h = 0.77*360
-    m_s = 100;
-    m_v = 100;
-    m_h = (77.0f / 100.0f) * 360.0f; // ≈ 277.2
-
-    update_indicator_params_for_mode();
-
-    pwm_init();
-    button_init();
-
-    // Показать стартовый цвет сразу
-    uint16_t r, g, b;
-    hsv_to_rgb(m_h, m_s, m_v, &r, &g, &b);
-    pwm_write_channels(0, r, g, b);
-
-    while (1) {
-        __WFE();
-    }
 }
