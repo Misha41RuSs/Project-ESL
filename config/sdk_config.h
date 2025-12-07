@@ -6299,7 +6299,7 @@
 // <i> Functions that modify USBD state are functions for sleep, wakeup, start, stop, enable, and disable.
 //==========================================================
 #ifndef APP_USBD_CONFIG_EVENT_QUEUE_ENABLE
-#define APP_USBD_CONFIG_EVENT_QUEUE_ENABLE 1
+#define APP_USBD_CONFIG_EVENT_QUEUE_ENABLE 0
 #endif
 // <o> APP_USBD_CONFIG_EVENT_QUEUE_SIZE - The size of the event queue.  <16-64> 
 
@@ -7285,13 +7285,13 @@
 // <e> NRF_QUEUE_ENABLED - nrf_queue - Queue module
 //==========================================================
 #ifndef NRF_QUEUE_ENABLED
-#define NRF_QUEUE_ENABLED 0
+#define NRF_QUEUE_ENABLED 1
 #endif
 // <q> NRF_QUEUE_CLI_CMDS  - Enable CLI commands specific to the module
  
 
 #ifndef NRF_QUEUE_CLI_CMDS
-#define NRF_QUEUE_CLI_CMDS 0
+#define NRF_QUEUE_CLI_CMDS 1
 #endif
 
 // </e>
@@ -7432,7 +7432,7 @@
  
 
 #ifndef NRF_CLI_ENABLED
-#define NRF_CLI_ENABLED 0
+#define NRF_CLI_ENABLED 1
 #endif
 
 // <o> NRF_CLI_ARGC_MAX - Maximum number of parameters passed to the command handler. 
@@ -9816,6 +9816,36 @@
 
 #ifndef NRF_CLI_LIBUARTE_CONFIG_DEBUG_COLOR
 #define NRF_CLI_LIBUARTE_CONFIG_DEBUG_COLOR 0
+#endif
+
+// <e> NRF_CLI_CDC_ACM_ENABLED - nrf_cli_cdc_acm - CDC ACM command line interface transport
+//==========================================================
+#ifndef NRF_CLI_CDC_ACM_ENABLED
+#define NRF_CLI_CDC_ACM_ENABLED 1
+#endif
+// <o> NRF_CLI_CDC_ACM_COMM_INTERFACE - CDC ACM COMM Interface number 
+#ifndef NRF_CLI_CDC_ACM_COMM_INTERFACE
+#define NRF_CLI_CDC_ACM_COMM_INTERFACE 0
+#endif
+
+// <o> NRF_CLI_CDC_ACM_DATA_INTERFACE - CDC ACM Data Interface number 
+#ifndef NRF_CLI_CDC_ACM_DATA_INTERFACE
+#define NRF_CLI_CDC_ACM_DATA_INTERFACE 1
+#endif
+
+// <o> NRF_CLI_CDC_ACM_COMM_EPIN - CDC ACM COMM IN endpoint number 
+#ifndef NRF_CLI_CDC_ACM_COMM_EPIN
+#define NRF_CLI_CDC_ACM_COMM_EPIN NRF_DRV_USBD_EPIN2
+#endif
+
+// <o> NRF_CLI_CDC_ACM_DATA_EPIN - CDC ACM DATA IN endpoint number 
+#ifndef NRF_CLI_CDC_ACM_DATA_EPIN
+#define NRF_CLI_CDC_ACM_DATA_EPIN NRF_DRV_USBD_EPIN1
+#endif
+
+// <o> NRF_CLI_CDC_ACM_DATA_EPOUT - CDC ACM DATA OUT endpoint number 
+#ifndef NRF_CLI_CDC_ACM_DATA_EPOUT
+#define NRF_CLI_CDC_ACM_DATA_EPOUT NRF_DRV_USBD_EPOUT1
 #endif
 
 // </e>

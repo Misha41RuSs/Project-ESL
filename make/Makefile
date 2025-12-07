@@ -3,6 +3,7 @@ TARGETS          := nrf52840_xxaa
 OUTPUT_DIRECTORY := _build
 DFU_PACKAGE      := $(OUTPUT_DIRECTORY)/nrf52840_xxaa.dfu
 DFU_PORT         ?= /dev/ttyACM0
+ESTC_USB_CLI_ENABLED ?= 1
 
 SDK_ROOT := /home/user/devel/esl-nsdk
 PROJ_DIR := ../
@@ -13,6 +14,7 @@ $(OUTPUT_DIRECTORY)/nrf52840_xxaa.out: \
 # Source files common to all targets
 SRC_FILES += \
   $(PROJ_DIR)/main.c \
+  $(PROJ_DIR)/cli.c\
   $(SDK_ROOT)/modules/nrfx/mdk/gcc_startup_nrf52840.S \
   $(SDK_ROOT)/modules/nrfx/soc/nrfx_atomic.c \
   $(SDK_ROOT)/modules/nrfx/mdk/system_nrf52840.c \
@@ -98,6 +100,28 @@ INC_FOLDERS += \
 # Libraries common to all targets
 LIB_FILES += \
 
+CLI_SOURCE_FILES = \
+  $(SDK_ROOT)/components/libraries/cli/nrf_cli.c \
+  $(SDK_ROOT)/components/libraries/cli/cdc_acm/nrf_cli_cdc_acm.c \
+  $(SDK_ROOT)/components/libraries/queue/nrf_queue.c \
+  $(SDK_ROOT)/components/libraries/pwr_mgmt/nrf_pwr_mgmt.c \
+  $(SDK_ROOT)/components/libraries/experimental_section_vars/nrf_section_iter.c \
+  $(SDK_ROOT)/external/utf_converter/utf.c
+
+CLI_INCLUDE_DIRS = \
+  $(SDK_ROOT)/components/libraries/cli \
+  $(SDK_ROOT)/components/libraries/cli/cdc_acm \
+  $(SDK_ROOT)/components/libraries/queue \
+  $(SDK_ROOT)/components/libraries/mutex
+
+ifdef ESTC_USB_CLI_ENABLED
+  ifeq ($(ESTC_USB_CLI_ENABLED), 1)
+      CFLAGS += -DESTC_USB_CLI_ENABLED
+      SRC_FILES += $(CLI_SOURCE_FILES)
+      INC_FOLDERS += $(CLI_INCLUDE_DIRS)
+  endif
+endif
+  
 # Optimization flags
 OPT = -O3 -g3
 # Uncomment the line below to enable link time optimization
@@ -112,7 +136,7 @@ CFLAGS += -DFLOAT_ABI_HARD
 CFLAGS += -DMBR_PRESENT
 CFLAGS += -DNRF52840_XXAA
 CFLAGS += -DNRFX_NVMC_ENABLED
-CFLAGS += -DUSE_APP_CONFIG
+# CFLAGS += -DUSE_APP_CONFIG
 # Добавляем defines для app_timer
 CFLAGS += -DAPP_TIMER_V2
 CFLAGS += -DAPP_TIMER_V2_RTC1_ENABLED

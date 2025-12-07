@@ -13,8 +13,8 @@
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
-#include "nrf_log_backend_usb.h"
 #include "nrf_drv_power.h"
+#include "cli.h" 
 
 #define LED0_PIN 6
 #define LED1_PIN 8
@@ -27,13 +27,12 @@
 #define DEBOUNCE_MS 50
 #define DOUBLE_CLICK_MS 400
 #define HOLD_INTERVAL_MS MAIN_INTERVAL_MS
-#define HOLD_STEP_H 1 // градусы за шаг для H
-#define HOLD_STEP_SV 1 // проценты за шаг для S и V
+#define HOLD_STEP_H 1
+#define HOLD_STEP_SV 1
 #define SLOW_BLINK_PERIOD_MS 1500
 #define FAST_BLINK_PERIOD_MS 500
 #define FLASH_SAVE_ADDR 0x7F000
 
-// Прототипы функций
 void pwm_init(void);
 void button_init(void);
 void main_timer_handler(void * p_context);
@@ -44,8 +43,8 @@ static void update_indicator_params_for_mode(void);
 static inline int clamp_int(int v, int lo, int hi);
 static void hsv_to_rgb(float h, int s, int v, uint16_t *r, uint16_t *g, uint16_t *b);
 static void pwm_write_channels(uint16_t ch0, uint16_t ch1, uint16_t ch2, uint16_t ch3);
-static void save_hsv_to_flash(void);
-static bool load_hsv_from_flash(void);
+void save_hsv_to_flash(void);
+bool load_hsv_from_flash(void);
 
 static nrfx_pwm_t m_pwm_instance = NRFX_PWM_INSTANCE(0);
 static nrf_pwm_values_individual_t m_seq_values;
@@ -57,18 +56,19 @@ typedef enum {
     MODE_VAL
 } input_mode_t;
 
-static volatile input_mode_t m_mode = MODE_NONE;
-static float m_h = 0.0f;
-static int m_s = 100;
-static int m_v = 100;
-static int dir_h = 1;
-static int dir_s = 1;
-static int dir_v = 1;
-static int m_indicator_duty = 0;
-static int m_indicator_dir = 1;
-static volatile bool m_button_blocked = false;
-static volatile bool m_first_click_detected = false;
-static volatile bool m_button_held = false;
+volatile input_mode_t m_mode = MODE_NONE;
+volatile float m_h = 0.0f;
+volatile int m_s = 100;
+volatile int m_v = 100;
+volatile int dir_h = 1;
+volatile int dir_s = 1;
+volatile int dir_v = 1;
+volatile int m_indicator_duty = 0;
+volatile int m_indicator_dir = 1;
+volatile bool m_button_blocked = false;
+volatile bool m_first_click_detected = false;
+volatile bool m_button_held = false;
+
 APP_TIMER_DEF(main_timer);
 APP_TIMER_DEF(debounce_timer);
 APP_TIMER_DEF(double_click_timer);
@@ -98,12 +98,16 @@ int main(void) {
     update_indicator_params_for_mode();
     pwm_init();
     button_init();
+    
+    usb_cli_init();
+    
     uint16_t r, g, b;
     hsv_to_rgb(m_h, m_s, m_v, &r, &g, &b);
     pwm_write_channels(0, r, g, b);
     
     while (1) {
-        LOG_BACKEND_USB_PROCESS();
+        usb_cli_process();
+        
         if (NRF_LOG_PROCESS() == false) {
             __WFE();
         }
@@ -120,7 +124,7 @@ static void unpack_hsv(uint32_t packed) {
     m_v = packed & 0xFF;
 }
 
-static void save_hsv_to_flash(void) {
+void save_hsv_to_flash(void) {
     uint32_t data = pack_hsv();
     uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
     if (*p_flash == data) return;
@@ -131,7 +135,7 @@ static void save_hsv_to_flash(void) {
     while (!nrfx_nvmc_write_done_check());
 }
 
-static bool load_hsv_from_flash(void) {
+bool load_hsv_from_flash(void) {
     uint32_t *p_flash = (uint32_t *)FLASH_SAVE_ADDR;
     uint32_t data = *p_flash;
     if (data == 0xFFFFFFFF) return false; 
@@ -149,7 +153,7 @@ static inline int clamp_int(int v, int lo, int hi) {
     return v;
 }
 
-static void hsv_to_rgb(float h, int s, int v, uint16_t *r, uint16_t *g, uint16_t *b) {
+void hsv_to_rgb(float h, int s, int v, uint16_t *r, uint16_t *g, uint16_t *b) {
     float H = h;
     float S = s / 100.0f;
     float V = v / 100.0f;
