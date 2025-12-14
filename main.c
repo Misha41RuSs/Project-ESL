@@ -100,6 +100,7 @@ int main(void) {
     button_init();
     
     usb_cli_init();
+    load_colors_from_flash();
     
     uint16_t r, g, b;
     hsv_to_rgb(m_h, m_s, m_v, &r, &g, &b);

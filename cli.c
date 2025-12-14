@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include "nrfx_nvmc.h"
 
 NRF_CLI_CDC_ACM_DEF(m_cli_cdc_acm_transport);
 
@@ -23,6 +24,224 @@ NRF_CLI_DEF(m_cli_cdc_acm,
 extern volatile float m_h;
 extern volatile int m_s;
 extern volatile int m_v;
+
+#define COLORS_FLASH_ADDR 0x7E000
+#define COLORS_MAGIC 0xC0A0BEEF
+
+static color_entry_t m_colors[MAX_COLORS];
+
+typedef struct {
+    uint32_t magic;
+    color_entry_t colors[MAX_COLORS];
+} flash_colors_t;
+
+static void hsv_to_rgb_for_cli(float h, int s, int v,
+                               uint8_t *r, uint8_t *g, uint8_t *b);
+
+static int find_color_index(const char *name) {
+    for (int i = 0; i < MAX_COLORS; i++) {
+        if (m_colors[i].used &&
+            strncmp(m_colors[i].name, name, COLOR_NAME_LEN) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int find_free_slot(void) {
+    for (int i = 0; i < MAX_COLORS; i++) {
+        if (!m_colors[i].used)
+            return i;
+    }
+    return -1;
+}
+
+static void cmd_add_rgb(nrf_cli_t const *p_cli, size_t argc, char **argv) {
+    if (argc != 5) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Использование: add_rgb_color <r> <g> <b> <name>\n");
+        return;
+    }
+
+    int r = atoi(argv[1]);
+    int g = atoi(argv[2]);
+    int b = atoi(argv[3]);
+
+    if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Значения RGB должны быть в диапазоне 0-255\n");
+        return;
+    }
+
+    if (find_color_index(argv[4]) >= 0) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Такой цвет уже есть\n");
+        return;
+    }
+
+    int slot = find_free_slot();
+    if (slot < 0) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Максимальное число цветов = %d\n", MAX_COLORS);
+        return;
+    }
+
+    float rf = r / 255.0f;
+    float gf = g / 255.0f;
+    float bf = b / 255.0f;
+
+    float max = fmaxf(rf, fmaxf(gf, bf));
+    float min = fminf(rf, fminf(gf, bf));
+    float delta = max - min;
+
+    float h = 0.0f;
+    if (delta > 0.0f) {
+        if (max == rf)
+            h = 60.0f * fmodf(((gf - bf) / delta), 6.0f);
+        else if (max == gf)
+            h = 60.0f * (((bf - rf) / delta) + 2.0f);
+        else
+            h = 60.0f * (((rf - gf) / delta) + 4.0f);
+
+        if (h < 0.0f) h += 360.0f;
+    }
+
+    float s = (max == 0.0f) ? 0.0f : (delta / max);
+    float v = max;
+
+    m_colors[slot].h = (uint16_t)h;
+    m_colors[slot].s = (uint8_t)(s * 100.0f);
+    m_colors[slot].v = (uint8_t)(v * 100.0f);
+    strncpy(m_colors[slot].name, argv[4], COLOR_NAME_LEN);
+    m_colors[slot].used = true;
+
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "RGB: цвет '%s' добавлен\n", argv[4]);
+    save_colors_to_flash();
+}
+
+
+static void cmd_add_hsv(nrf_cli_t const *p_cli, size_t argc, char **argv) {
+    if (argc != 5) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Использование: add_hsv_color <h> <s> <v> <name>\n");
+        return;
+    }
+
+    if (find_color_index(argv[4]) >= 0) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Такой цвет уже есть\n");
+        return;
+    }
+
+    int slot = find_free_slot();
+    if (slot < 0) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Максимальное число цветов = %d\n", MAX_COLORS);
+        return;
+    }
+
+    m_colors[slot].h = atoi(argv[1]);
+    m_colors[slot].s = atoi(argv[2]);
+    m_colors[slot].v = atoi(argv[3]);
+    strncpy(m_colors[slot].name, argv[4], COLOR_NAME_LEN);
+    m_colors[slot].used = true;
+
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "HSV: цвет '%s' добавлен\n", argv[4]);
+    save_colors_to_flash();
+}
+
+static void cmd_add_current(nrf_cli_t const *p_cli, size_t argc, char **argv) {
+    if (argc != 2) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Использование: add_current_color <name>\n");
+        return;
+    }
+
+    int slot = find_free_slot();
+    if (slot < 0) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Достигнута максимальная вместимость кол-ва цветов, удалите какой-нибудь\n");
+        return;
+    }
+
+    m_colors[slot].h = (uint16_t)m_h;
+    m_colors[slot].s = (uint8_t)m_s;
+    m_colors[slot].v = (uint8_t)m_v;
+    strncpy(m_colors[slot].name, argv[1], COLOR_NAME_LEN);
+    m_colors[slot].used = true;
+
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "Текущий цвет сохранен под именем '%s'\n", argv[1]);
+    save_colors_to_flash();
+}
+
+static void cmd_apply_color(nrf_cli_t const *p_cli, size_t argc, char **argv) {
+    if (argc != 2) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Использование: apply_color <name>\n");
+        return;
+    }
+
+    int idx = find_color_index(argv[1]);
+    if (idx < 0) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Цвет не найден\n");
+        return;
+    }
+
+    m_h = m_colors[idx].h;
+    m_s = m_colors[idx].s;
+    m_v = m_colors[idx].v;
+
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "Цвет с именем '%s' применён!\n", argv[1]);
+}
+
+static void cmd_list_colors(nrf_cli_t const *p_cli, size_t argc, char **argv) {
+    (void)argc; (void)argv;
+
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "Сохраненные цвета:\n");
+    for (int i = 0; i < MAX_COLORS; i++) {
+        if (m_colors[i].used) {
+            uint8_t r, g, b;
+            hsv_to_rgb_for_cli((float)m_colors[i].h,
+                   m_colors[i].s,
+                   m_colors[i].v,
+                   &r, &g, &b);
+
+            nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+                "  %s: HSV(H=%d S=%d V=%d) RGB(%d,%d,%d)\n",
+                m_colors[i].name,
+                m_colors[i].h,
+                m_colors[i].s,
+                m_colors[i].v,
+                r, g, b);
+        }
+    }
+}
+
+static void cmd_del_color(nrf_cli_t const *p_cli, size_t argc, char **argv) {
+    if (argc != 2) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Использование: del_color <name>\n");
+        return;
+    }
+
+    int idx = find_color_index(argv[1]);
+    if (idx < 0) {
+        nrf_cli_fprintf(p_cli, NRF_CLI_ERROR,
+            "Цвет не найден\n");
+        return;
+    }
+
+    m_colors[idx].used = false;
+    save_colors_to_flash();
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "Цвет с именем '%s' удалён\n", argv[1]);
+}
+
 
 static void hsv_to_rgb_for_cli(float h, int s, int v, uint8_t *r, uint8_t *g, uint8_t *b) {
     float H = h;
@@ -187,6 +406,18 @@ static void cmd_help(nrf_cli_t const * p_cli, size_t argc, char ** argv) {
     nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "  STATUS            - Показывает текущий статус цвета\n");
     nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "  RESET             - Сбрасывает цвет согласно варианту #6577\n");
     nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL, "  HELP              - Показывает информацию о доступных командах\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "  add_rgb_color <r> <g> <b> <name>   - Добавляет RGB цвет в память (0-255)\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "  add_hsv_color <h> <s> <v> <name>   - Добавляет HSV цвет в память (H:0-360, S/V:0-100)\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "  add_current_color <name>           - Сохраняет текущий цвет\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "  del_color <name>                   - Удаляет цвет\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "  apply_color <name>                 - Применяет выбранный цвет\n");
+    nrf_cli_fprintf(p_cli, NRF_CLI_NORMAL,
+        "  list_colors                        - Список сохранённых цветов\n");
 }
 
 NRF_CLI_CMD_REGISTER(RGB, NULL, "Set RGB color", cmd_rgb);
@@ -194,6 +425,12 @@ NRF_CLI_CMD_REGISTER(HSV, NULL, "Set HSV color", cmd_hsv);
 NRF_CLI_CMD_REGISTER(STATUS, NULL, "Show current status", cmd_status);
 NRF_CLI_CMD_REGISTER(RESET, NULL, "Reset to default color", cmd_reset);
 NRF_CLI_CMD_REGISTER(HELP, NULL, "Show help", cmd_help);
+NRF_CLI_CMD_REGISTER(add_hsv_color, NULL, "Add HSV color", cmd_add_hsv);
+NRF_CLI_CMD_REGISTER(add_current_color, NULL, "Save current color", cmd_add_current);
+NRF_CLI_CMD_REGISTER(apply_color, NULL, "Apply saved color", cmd_apply_color);
+NRF_CLI_CMD_REGISTER(list_colors, NULL, "List saved colors", cmd_list_colors);
+NRF_CLI_CMD_REGISTER(del_color, NULL, "Delete color", cmd_del_color);
+NRF_CLI_CMD_REGISTER(add_rgb_color, NULL, "Add RGB color", cmd_add_rgb);
 
 static void usbd_user_ev_handler(app_usbd_event_type_t event) {
     switch (event)
@@ -267,8 +504,7 @@ void get_status(uint16_t *h, uint8_t *s, uint8_t *v, uint8_t *r, uint8_t *g, uin
     }
 }
 
-void usb_cli_init(void)
-{
+void usb_cli_init(void) {
     ret_code_t ret;
 
     ret = nrf_cli_init(&m_cli_cdc_acm, NULL, true, true, NRF_LOG_SEVERITY_INFO);
@@ -293,10 +529,31 @@ void usb_cli_init(void)
     APP_ERROR_CHECK(ret);
 }
 
-void usb_cli_process(void)
-{
+void usb_cli_process(void) {
     nrf_cli_process(&m_cli_cdc_acm);
 }
+
+void save_colors_to_flash(void) {
+    flash_colors_t data;
+    data.magic = COLORS_MAGIC;
+    memcpy(data.colors, m_colors, sizeof(m_colors));
+
+    nrfx_nvmc_page_erase(COLORS_FLASH_ADDR);
+    nrfx_nvmc_words_write(COLORS_FLASH_ADDR,
+        (uint32_t *)&data,
+        sizeof(data) / 4);
+}
+
+void load_colors_from_flash(void) {
+    flash_colors_t *p =
+        (flash_colors_t *)COLORS_FLASH_ADDR;
+
+    if (p->magic != COLORS_MAGIC)
+        return;
+
+    memcpy(m_colors, p->colors, sizeof(m_colors));
+}
+
 
 #else
 
